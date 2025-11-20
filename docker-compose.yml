@@ -71,7 +71,7 @@ services:
       dockerfile: Dockerfile
     container_name: ocp-orchestrator
     environment:
-      DATABASE_URL: postgresql://ocpuser:ocppassword@postgres:5432/ocplatform
+      DATABASE_URL: postgresql+asyncpg://ocpuser:ocppassword@postgres:5432/ocplatform
       REDIS_URL: redis://redis:6379/0
       NLU_SERVICE_URL: http://nlu-service:8001
       LOG_LEVEL: INFO
@@ -86,6 +86,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      nlu-service:
+        condition: service_started
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -101,6 +103,7 @@ services:
       dockerfile: Dockerfile
     container_name: ocp-nlu
     environment:
+      DATABASE_URL: postgresql+asyncpg://ocpuser:ocppassword@postgres:5432/ocplatform
       MODEL_PATH: /models/nlu
       LOG_LEVEL: INFO
       CACHE_ENABLED: "true"
@@ -111,7 +114,10 @@ services:
       - ./services/nlu-service:/app
       - ./ml-models/nlu:/models/nlu
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
     networks:
       - ocp-network
