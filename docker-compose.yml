@@ -1,0 +1,235 @@
+version: '3.8'
+
+# Conversational AI Platform - Development Environment
+# Phase 1: Basic infrastructure for text-based chatbot
+
+services:
+  # ============================================
+  # DATABASES & CACHE
+  # ============================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: ocp-postgres
+    environment:
+      POSTGRES_DB: ocplatform
+      POSTGRES_USER: ocpuser
+      POSTGRES_PASSWORD: ocppassword
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ocpuser -d ocplatform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ocp-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ocp-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ocp-network
+
+  # ============================================
+  # ADMINER - Database Management UI
+  # ============================================
+
+  adminer:
+    image: adminer:latest
+    container_name: ocp-adminer
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    networks:
+      - ocp-network
+
+  # ============================================
+  # CORE SERVICES (Phase 1)
+  # ============================================
+
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    container_name: ocp-orchestrator
+    environment:
+      DATABASE_URL: postgresql://ocpuser:ocppassword@postgres:5432/ocplatform
+      REDIS_URL: redis://redis:6379/0
+      NLU_SERVICE_URL: http://nlu-service:8001
+      LOG_LEVEL: INFO
+      ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/orchestrator:/app
+      - ./ml-models:/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ocp-network
+
+  nlu-service:
+    build:
+      context: ./services/nlu-service
+      dockerfile: Dockerfile
+    container_name: ocp-nlu
+    environment:
+      MODEL_PATH: /models/nlu
+      LOG_LEVEL: INFO
+      CACHE_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/1
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./services/nlu-service:/app
+      - ./ml-models/nlu:/models/nlu
+    depends_on:
+      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    networks:
+      - ocp-network
+
+  chat-connector:
+    build:
+      context: ./services/chat-connector
+      dockerfile: Dockerfile
+    container_name: ocp-chat-connector
+    environment:
+      ORCHESTRATOR_URL: http://orchestrator:8000
+      REDIS_URL: redis://redis:6379/2
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./services/chat-connector:/app
+    depends_on:
+      - orchestrator
+      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8004 --reload
+    networks:
+      - ocp-network
+
+  # ============================================
+  # FRONTEND (Phase 1)
+  # ============================================
+
+  chat-widget:
+    build:
+      context: ./frontend/chat-widget
+      dockerfile: Dockerfile.dev
+    container_name: ocp-chat-widget
+    environment:
+      REACT_APP_WS_URL: ws://localhost:8004
+      REACT_APP_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/chat-widget:/app
+      - /app/node_modules
+    stdin_open: true
+    tty: true
+    networks:
+      - ocp-network
+
+  # ============================================
+  # MESSAGE QUEUE (Optional for Phase 1, Required for Phase 4)
+  # ============================================
+
+  # Uncomment for Phase 4 (Analytics)
+  # zookeeper:
+  #   image: confluentinc/cp-zookeeper:7.5.0
+  #   container_name: ocp-zookeeper
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #     ZOOKEEPER_TICK_TIME: 2000
+  #   networks:
+  #     - ocp-network
+
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.5.0
+  #   container_name: ocp-kafka
+  #   depends_on:
+  #     - zookeeper
+  #   ports:
+  #     - "9092:9092"
+  #   environment:
+  #     KAFKA_BROKER_ID: 1
+  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+  #     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  #   networks:
+  #     - ocp-network
+
+  # ============================================
+  # MONITORING (Optional for Phase 1, Required for Phase 5)
+  # ============================================
+
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: ocp-prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus_data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   networks:
+  #     - ocp-network
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: ocp-grafana
+  #   ports:
+  #     - "3001:3000"
+  #   environment:
+  #     GF_SECURITY_ADMIN_PASSWORD: admin
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #     - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+  #   networks:
+  #     - ocp-network
+
+networks:
+  ocp-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  # prometheus_data:
+  #   driver: local
+  # grafana_data:
+  #   driver: local
