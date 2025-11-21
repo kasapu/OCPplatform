@@ -4,6 +4,7 @@ Executes dialogue flows based on state machine logic
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from typing import Dict, Any, List, Optional
 import logging
 import re
@@ -323,7 +324,7 @@ class FlowExecutor:
             return None
 
         result = await self.db.execute(
-            "SELECT flow_definition FROM dialogue_flows WHERE flow_id = :flow_id",
+            text("SELECT flow_definition FROM dialogue_flows WHERE flow_id = :flow_id"),
             {"flow_id": flow_id}
         )
         row = result.fetchone()

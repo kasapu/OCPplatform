@@ -4,7 +4,7 @@ Communicates with the NLU microservice for intent and entity detection
 """
 
 import httpx
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
 
 from app.core.config import settings

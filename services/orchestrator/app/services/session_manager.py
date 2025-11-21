@@ -4,6 +4,7 @@ Handles session creation, retrieval, and updates
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from typing import Optional, Dict, Any
 import uuid
 from datetime import datetime
@@ -46,7 +47,7 @@ class SessionManager:
         # If no flow specified, get the active flow
         if not flow_id:
             result = await self.db.execute(
-                "SELECT flow_id FROM dialogue_flows WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1"
+                text("SELECT flow_id FROM dialogue_flows WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1")
             )
             row = result.fetchone()
             if row:
@@ -54,7 +55,7 @@ class SessionManager:
 
         # Insert session into database
         await self.db.execute(
-            """
+            text("""
             INSERT INTO sessions (
                 session_id, channel_type, caller_id, user_id,
                 started_at, current_state, context, assigned_flow_id
@@ -62,7 +63,7 @@ class SessionManager:
                 :session_id, :channel_type, :caller_id, :user_id,
                 :started_at, 'started', :context, :flow_id
             )
-            """,
+            """),
             {
                 "session_id": session_id,
                 "channel_type": channel_type,
@@ -169,7 +170,7 @@ class SessionManager:
             bot_action: Action taken
         """
         await self.db.execute(
-            """
+            text("""
             INSERT INTO conversation_turns (
                 session_id, turn_number, speaker,
                 user_input_text, detected_intent, intent_confidence,
@@ -181,7 +182,7 @@ class SessionManager:
                 :extracted_entities, :bot_response_text, :bot_action,
                 NOW()
             )
-            """,
+            """),
             {
                 "session_id": session_id,
                 "turn_number": turn_number,
@@ -215,7 +216,7 @@ class SessionManager:
         """
         # Get session data
         result = await self.db.execute(
-            "SELECT started_at FROM sessions WHERE session_id = :session_id",
+            text("SELECT started_at FROM sessions WHERE session_id = :session_id"),
             {"session_id": session_id}
         )
         row = result.fetchone()
@@ -224,25 +225,25 @@ class SessionManager:
 
         # Update session
         await self.db.execute(
-            """
+            text("""
             UPDATE sessions
             SET ended_at = NOW(),
                 current_state = :reason
             WHERE session_id = :session_id
-            """,
+            """),
             {"session_id": session_id, "reason": reason}
         )
 
         # Get turn count
         result = await self.db.execute(
-            "SELECT COUNT(*) FROM conversation_turns WHERE session_id = :session_id",
+            text("SELECT COUNT(*) FROM conversation_turns WHERE session_id = :session_id"),
             {"session_id": session_id}
         )
         turn_count = result.scalar()
 
         # Calculate duration
         result = await self.db.execute(
-            "SELECT duration_seconds FROM sessions WHERE session_id = :session_id",
+            text("SELECT duration_seconds FROM sessions WHERE session_id = :session_id"),
             {"session_id": session_id}
         )
         duration_seconds = result.scalar()

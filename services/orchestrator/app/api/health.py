@@ -4,6 +4,7 @@ Health check endpoints
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from datetime import datetime
 
 from app.core.database import get_db
@@ -23,7 +24,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     """
     # Check database
     try:
-        result = await db.execute("SELECT 1")
+        result = await db.execute(text("SELECT 1"))
         db_status = "healthy"
     except Exception as e:
         db_status = f"unhealthy: {str(e)}"
