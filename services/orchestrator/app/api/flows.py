@@ -4,7 +4,7 @@ Dialogue flow management endpoints
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, insert, update
+from sqlalchemy import select, insert, update, text
 from typing import List, Optional
 import uuid
 import logging
@@ -27,12 +27,12 @@ async def list_flows(
     Optionally filter by active status
     """
     try:
-        query = "SELECT * FROM dialogue_flows"
+        query_str = "SELECT * FROM dialogue_flows"
         if is_active is not None:
-            query += f" WHERE is_active = {is_active}"
-        query += " ORDER BY created_at DESC"
+            query_str += f" WHERE is_active = {is_active}"
+        query_str += " ORDER BY created_at DESC"
 
-        result = await db.execute(query)
+        result = await db.execute(text(query_str))
         flows = result.fetchall()
 
         return [
@@ -61,7 +61,7 @@ async def get_flow(
     """Get a specific dialogue flow by ID"""
     try:
         result = await db.execute(
-            "SELECT * FROM dialogue_flows WHERE flow_id = :flow_id",
+            text("SELECT * FROM dialogue_flows WHERE flow_id = :flow_id"),
             {"flow_id": flow_id}
         )
         row = result.fetchone()
@@ -99,7 +99,7 @@ async def create_flow(
     try:
         # Check if flow name already exists
         result = await db.execute(
-            "SELECT flow_id FROM dialogue_flows WHERE flow_name = :flow_name",
+            text("SELECT flow_id FROM dialogue_flows WHERE flow_name = :flow_name"),
             {"flow_name": request.flow_name}
         )
         if result.fetchone():
@@ -108,7 +108,7 @@ async def create_flow(
         # Insert new flow
         flow_id = uuid.uuid4()
         await db.execute(
-            """
+            text("""
             INSERT INTO dialogue_flows (
                 flow_id, flow_name, description, flow_definition,
                 version, is_active, traffic_percentage
@@ -116,7 +116,7 @@ async def create_flow(
                 :flow_id, :flow_name, :description, :flow_definition,
                 1, FALSE, :traffic_percentage
             )
-            """,
+            """),
             {
                 "flow_id": flow_id,
                 "flow_name": request.flow_name,
@@ -131,7 +131,7 @@ async def create_flow(
 
         # Fetch and return created flow
         result = await db.execute(
-            "SELECT * FROM dialogue_flows WHERE flow_id = :flow_id",
+            text("SELECT * FROM dialogue_flows WHERE flow_id = :flow_id"),
             {"flow_id": flow_id}
         )
         row = result.fetchone()
@@ -168,7 +168,7 @@ async def publish_flow(
     try:
         # Check if flow exists
         result = await db.execute(
-            "SELECT flow_id FROM dialogue_flows WHERE flow_id = :flow_id",
+            text("SELECT flow_id FROM dialogue_flows WHERE flow_id = :flow_id"),
             {"flow_id": flow_id}
         )
         if not result.fetchone():
@@ -176,13 +176,13 @@ async def publish_flow(
 
         # Update flow
         await db.execute(
-            """
+            text("""
             UPDATE dialogue_flows
             SET is_active = TRUE,
                 published_at = NOW(),
                 traffic_percentage = :traffic_percentage
             WHERE flow_id = :flow_id
-            """,
+            """),
             {
                 "flow_id": flow_id,
                 "traffic_percentage": request.traffic_percentage
