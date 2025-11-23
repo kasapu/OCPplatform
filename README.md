@@ -23,38 +23,34 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for comprehensive technical documentati
 
 ## Quick Start
 
+### Choose Your Platform
+
+**🪟 Windows Users** → See [WINDOWS_QUICKSTART.md](./WINDOWS_QUICKSTART.md) (5 minutes!)
+**🐧 Linux/Mac Users** → See [QUICKSTART.md](./QUICKSTART.md) (One command!)
+
 ### Prerequisites
 
-- Docker 24+ and Docker Compose
-- Python 3.11+
-- Node.js 20+
-- PostgreSQL 15+
-- Redis 7+
+- **Docker Desktop** (Windows/Mac) or **Docker 24+** (Linux)
+- **Docker Compose** (included with Docker Desktop)
 
-### Phase 1: Text-Based Bot (MVP)
+That's it! Everything else runs in containers.
+
+### Windows: One-Click Start
+
+1. Install Docker Desktop from https://www.docker.com/products/docker-desktop
+2. Start Docker Desktop (wait for green icon)
+3. Double-click **`start-windows.bat`**
+4. Open http://localhost:3000
+
+See [WINDOWS_SETUP.md](./WINDOWS_SETUP.md) for detailed Windows instructions and troubleshooting.
+
+### Linux/Mac: One Command
 
 ```bash
-# Clone and setup
-git clone <your-repo-url>
-cd OCPplatform
-
-# Start infrastructure services
-docker-compose up -d postgres redis
-
-# Run database migrations
-cd services/orchestrator
-python -m alembic upgrade head
-
-# Start orchestrator service
-uvicorn main:app --reload --port 8000
-
-# In another terminal, start the chat UI
-cd ../../frontend
-npm install
-npm start
+./scripts/start.sh
 ```
 
-Visit http://localhost:3000 to interact with the chatbot.
+Then open http://localhost:3000 to start chatting!
 
 ## Project Structure
 
@@ -100,7 +96,7 @@ OCPplatform/
 
 | Phase | Timeline | Status | Description |
 |-------|----------|--------|-------------|
-| **Phase 1** | Weeks 1-4 | 🚧 In Progress | Text-based chatbot with basic NLU |
+| **Phase 1** | Weeks 1-4 | ✅ **COMPLETE** | Text-based chatbot with basic NLU |
 | **Phase 2** | Weeks 5-10 | 📋 Planned | Advanced NLU + visual flow designer |
 | **Phase 3** | Weeks 11-16 | 📋 Planned | Voice integration (SIP, STT, TTS) |
 | **Phase 4** | Weeks 17-22 | 📋 Planned | Analytics, BI dashboards, retraining |
@@ -274,6 +270,8 @@ Inspired by the Omilia Cloud Platform architecture. Built with modern open-sourc
 
 ---
 
-**Status**: 🚧 Under Active Development (Phase 1)
-**Version**: 0.1.0
-**Last Updated**: 2025-01-20
+**Status**: ✅ Phase 1 Complete - Production Ready!
+**Version**: 1.0.0
+**Last Updated**: 2025-01-21
+
+🚀 **Ready to run on Windows, Linux, and Mac!**
