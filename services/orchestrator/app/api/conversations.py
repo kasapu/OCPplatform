@@ -125,9 +125,23 @@ async def process_turn(
             entities=nlu_result["entities"]
         )
 
-        # Step 5: External API calls (if needed) - TODO: Phase 2
-        if flow_result.get("api_call_needed"):
-            logger.info(f"Session {session_id}: API call needed but not yet implemented (Phase 2)")
+        # Step 5: External API calls (if needed) - Phase 2 Integration Service
+        if flow_result.get("next_action", {}).get("action_type") == "execute_api_call":
+            logger.info(f"Session {session_id}: Executing API call via Integration Service")
+
+            # Execute API call
+            api_call_config = flow_result.get("api_call_config")
+            if api_call_config:
+                api_result = await flow_executor.execute_api_call(
+                    api_call_config,
+                    session_context
+                )
+
+                # Update flow result with API call result
+                flow_result["response_text"] = api_result["response_text"]
+                flow_result["next_node"] = api_result["next_node"]
+                flow_result["next_action"] = api_result["next_action"]
+                flow_result["context_updates"].update(api_result.get("context_updates", {}))
 
         # Step 6: Generate response text
         response_text = flow_result["response_text"]

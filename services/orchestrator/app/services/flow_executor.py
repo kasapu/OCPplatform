@@ -9,6 +9,8 @@ from typing import Dict, Any, List, Optional
 import logging
 import re
 
+from app.services.integration_client import get_integration_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -205,14 +207,51 @@ class FlowExecutor:
                 }
 
         elif node_type == "api_caller":
-            # API call node (Phase 2)
+            # API call node (Phase 2) - Call Integration Service
+            config = node.get("config", {})
+            integration_id = config.get("integration_id")
+            endpoint = config.get("endpoint")
+            method = config.get("method", "POST")
+
+            if not integration_id or not endpoint:
+                logger.error(f"api_caller node missing integration_id or endpoint: {node.get('id')}")
+                return {
+                    "response_text": "Sorry, there was an error processing your request.",
+                    "next_node": node.get("on_failure", "intent_router"),
+                    "next_action": {"action_type": "wait_for_input"},
+                    "context_updates": {}
+                }
+
+            # Render templates in endpoint and body with slot values
+            endpoint_rendered = self._render_template(endpoint, slots)
+
+            # Prepare request body (render templates if body_template provided)
+            body = None
+            if "body_template" in config:
+                body = self._render_json_template(config["body_template"], slots)
+            elif "body" in config:
+                body = config["body"]
+
+            # Mark this as needing async execution
             return {
-                "response_text": "Processing your request...",
-                "next_node": node.get("next"),
+                "response_text": config.get("processing_message", "Processing your request..."),
+                "next_node": node.get("id"),  # Stay on same node for now
                 "next_action": {
                     "action_type": "execute_api_call"
                 },
-                "api_call_needed": True,
+                "api_call_config": {
+                    "integration_id": integration_id,
+                    "endpoint": endpoint_rendered,
+                    "method": method,
+                    "body": body,
+                    "headers": config.get("headers"),
+                    "query_params": config.get("query_params"),
+                    "on_success": config.get("on_success"),
+                    "on_failure": config.get("on_failure"),
+                    "success_message_template": config.get("success_message_template"),
+                    "failure_message_template": config.get("failure_message_template"),
+                    "response_mapping": config.get("response_mapping", {})
+                },
                 "context_updates": {}
             }
 
@@ -288,6 +327,158 @@ class FlowExecutor:
                 return entity.get("value")
 
         return None
+
+    def _render_json_template(self, template: Dict[str, Any], slots: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Render a JSON template with slot values
+
+        Args:
+            template: JSON template with {slot_name} placeholders in string values
+            slots: Dictionary of slot values
+
+        Returns:
+            Rendered JSON
+        """
+        import json
+
+        # Convert to string, replace placeholders, convert back
+        template_str = json.dumps(template)
+        for key, value in slots.items():
+            placeholder = f"{{{key}}}"
+            if placeholder in template_str:
+                # Handle different value types appropriately
+                if isinstance(value, str):
+                    template_str = template_str.replace(placeholder, value)
+                else:
+                    template_str = template_str.replace(f'"{placeholder}"', json.dumps(value))
+
+        return json.loads(template_str)
+
+    async def execute_api_call(
+        self,
+        api_call_config: Dict[str, Any],
+        session_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute API call via Integration Service
+
+        Args:
+            api_call_config: API call configuration from node
+            session_context: Current session context
+
+        Returns:
+            Execution result with response and next steps
+        """
+        slots = session_context.get("slots", {})
+
+        try:
+            # Get integration client
+            client = get_integration_client()
+
+            # Execute integration
+            result = await client.execute_integration(
+                integration_id=api_call_config["integration_id"],
+                endpoint=api_call_config["endpoint"],
+                method=api_call_config["method"],
+                body=api_call_config.get("body"),
+                headers=api_call_config.get("headers"),
+                query_params=api_call_config.get("query_params")
+            )
+
+            # Check if call was successful
+            if result.get("success"):
+                logger.info(f"API call successful: {api_call_config['integration_id']}")
+
+                # Extract values from response and add to slots
+                response_mapping = api_call_config.get("response_mapping", {})
+                response_body = result.get("body", {})
+
+                for slot_name, json_path in response_mapping.items():
+                    # Simple json path extraction (e.g., "data.id", "result.name")
+                    value = self._extract_json_path(response_body, json_path)
+                    if value is not None:
+                        slots[slot_name] = value
+
+                # Generate success message
+                success_template = api_call_config.get(
+                    "success_message_template",
+                    "Request completed successfully."
+                )
+                response_text = self._render_template(success_template, slots)
+
+                # Move to success node
+                next_node = api_call_config.get("on_success", "intent_router")
+
+                return {
+                    "response_text": response_text,
+                    "next_node": next_node,
+                    "next_action": {"action_type": "wait_for_input"},
+                    "context_updates": slots
+                }
+
+            else:
+                # API call failed
+                logger.warning(
+                    f"API call failed: {api_call_config['integration_id']} - {result.get('error')}"
+                )
+
+                # Generate failure message
+                failure_template = api_call_config.get(
+                    "failure_message_template",
+                    "Sorry, I wasn't able to complete that request. Please try again later."
+                )
+                response_text = self._render_template(failure_template, slots)
+
+                # Move to failure node
+                next_node = api_call_config.get("on_failure", "intent_router")
+
+                return {
+                    "response_text": response_text,
+                    "next_node": next_node,
+                    "next_action": {"action_type": "wait_for_input"},
+                    "context_updates": {}
+                }
+
+        except Exception as e:
+            logger.error(f"API call exception: {e}")
+
+            # Handle exception
+            failure_template = api_call_config.get(
+                "failure_message_template",
+                "Sorry, I wasn't able to complete that request. Please try again later."
+            )
+            response_text = self._render_template(failure_template, slots)
+
+            next_node = api_call_config.get("on_failure", "intent_router")
+
+            return {
+                "response_text": response_text,
+                "next_node": next_node,
+                "next_action": {"action_type": "wait_for_input"},
+                "context_updates": {}
+            }
+
+    def _extract_json_path(self, data: Dict[str, Any], path: str) -> Optional[Any]:
+        """
+        Extract value from JSON using simple dot notation path
+
+        Args:
+            data: JSON data
+            path: Dot-separated path (e.g., "data.user.name")
+
+        Returns:
+            Extracted value or None
+        """
+        keys = path.split(".")
+        current = data
+
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return None
+
+        return current
 
     def _fallback_response(self, intent: str) -> Dict[str, Any]:
         """
