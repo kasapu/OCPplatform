@@ -74,6 +74,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://ocpuser:ocppassword@postgres:5432/ocplatform
       REDIS_URL: redis://redis:6379/0
       NLU_SERVICE_URL: http://nlu-service:8001
+      INTEGRATION_SERVICE_URL: http://integration-service:8002
       LOG_LEVEL: INFO
       ENVIRONMENT: development
     ports:
@@ -87,6 +88,8 @@ services:
       redis:
         condition: service_healthy
       nlu-service:
+        condition: service_started
+      integration-service:
         condition: service_started
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
@@ -122,6 +125,34 @@ services:
     networks:
       - ocp-network
 
+  integration-service:
+    build:
+      context: ./services/integration-service
+      dockerfile: Dockerfile
+    container_name: ocp-integration-service
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ocpuser:ocppassword@postgres:5432/ocplatform
+      REDIS_URL: redis://redis:6379/2
+      LOG_LEVEL: INFO
+      ENVIRONMENT: development
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./services/integration-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ocp-network
+
   chat-connector:
     build:
       context: ./services/chat-connector
@@ -129,7 +160,7 @@ services:
     container_name: ocp-chat-connector
     environment:
       ORCHESTRATOR_URL: http://orchestrator:8000
-      REDIS_URL: redis://redis:6379/2
+      REDIS_URL: redis://redis:6379/3
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001
     ports:
       - "8004:8004"
