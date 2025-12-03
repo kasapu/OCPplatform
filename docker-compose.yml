@@ -153,6 +153,111 @@ services:
     networks:
       - ocp-network
 
+  # ============================================
+  # PHASE 3: VOICE CHANNEL SERVICES
+  # ============================================
+
+  voice-connector:
+    build:
+      context: ./services/voice-connector
+      dockerfile: Dockerfile
+    container_name: ocp-voice-connector
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ocpuser:ocppassword@postgres:5432/ocplatform
+      REDIS_URL: redis://redis:6379/4
+      ORCHESTRATOR_URL: http://orchestrator:8000
+      STT_SERVICE_URL: http://stt-service:8006
+      TTS_SERVICE_URL: http://tts-service:8007
+      FREESWITCH_HOST: freeswitch
+      FREESWITCH_PORT: 8021
+      FREESWITCH_PASSWORD: ClueCon
+      LOG_LEVEL: INFO
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./services/voice-connector:/app
+      - ./data/recordings:/recordings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      orchestrator:
+        condition: service_started
+    command: uvicorn main:app --host 0.0.0.0 --port 8005 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ocp-network
+
+  # FreeSWITCH SIP Server (commented out until configured)
+  # Uncomment when ready to test voice calls
+  # freeswitch:
+  #   image: drachtio/freeswitch:latest
+  #   container_name: ocp-freeswitch
+  #   ports:
+  #     - "5060:5060/udp"   # SIP
+  #     - "5080:5080/tcp"   # SIP over TCP
+  #     - "8021:8021/tcp"   # ESL
+  #     - "16384-16394:16384-16394/udp"  # RTP
+  #   volumes:
+  #     - ./infrastructure/freeswitch/freeswitch.xml:/etc/freeswitch/freeswitch.xml
+  #     - ./data/recordings:/recordings
+  #   environment:
+  #     FREESWITCH_LOG_LEVEL: INFO
+  #   networks:
+  #     - ocp-network
+
+  # STT Service (Whisper) - To be implemented
+  # stt-service:
+  #   build:
+  #     context: ./services/stt-service
+  #     dockerfile: Dockerfile
+  #   container_name: ocp-stt-service
+  #   runtime: nvidia  # Requires nvidia-docker for GPU
+  #   environment:
+  #     MODEL_PATH: /models/whisper
+  #     MODEL_NAME: large-v3
+  #     REDIS_URL: redis://redis:6379/5
+  #     LOG_LEVEL: INFO
+  #   ports:
+  #     - "8006:8006"
+  #   volumes:
+  #     - ./services/stt-service:/app
+  #     - ./ml-models/whisper:/models/whisper
+  #   depends_on:
+  #     - redis
+  #   networks:
+  #     - ocp-network
+
+  # TTS Service (Coqui) - To be implemented
+  # tts-service:
+  #   build:
+  #     context: ./services/tts-service
+  #     dockerfile: Dockerfile
+  #   container_name: ocp-tts-service
+  #   runtime: nvidia  # Requires nvidia-docker for GPU
+  #   environment:
+  #     MODEL_PATH: /models/tts
+  #     REDIS_URL: redis://redis:6379/6
+  #     LOG_LEVEL: INFO
+  #   ports:
+  #     - "8007:8007"
+  #   volumes:
+  #     - ./services/tts-service:/app
+  #     - ./ml-models/tts:/models/tts
+  #   depends_on:
+  #     - redis
+  #   networks:
+  #     - ocp-network
+
+  # ============================================
+  # CHAT CONNECTOR (Phase 1)
+  # ============================================
+
   chat-connector:
     build:
       context: ./services/chat-connector
