@@ -211,48 +211,62 @@ services:
   #   networks:
   #     - ocp-network
 
-  # STT Service (Whisper) - To be implemented
-  # stt-service:
-  #   build:
-  #     context: ./services/stt-service
-  #     dockerfile: Dockerfile
-  #   container_name: ocp-stt-service
-  #   runtime: nvidia  # Requires nvidia-docker for GPU
-  #   environment:
-  #     MODEL_PATH: /models/whisper
-  #     MODEL_NAME: large-v3
-  #     REDIS_URL: redis://redis:6379/5
-  #     LOG_LEVEL: INFO
-  #   ports:
-  #     - "8006:8006"
-  #   volumes:
-  #     - ./services/stt-service:/app
-  #     - ./ml-models/whisper:/models/whisper
-  #   depends_on:
-  #     - redis
-  #   networks:
-  #     - ocp-network
+  # STT Service (Whisper)
+  stt-service:
+    build:
+      context: ./services/stt-service
+      dockerfile: Dockerfile
+    container_name: ocp-stt-service
+    # runtime: nvidia  # Uncomment for GPU support (requires nvidia-docker)
+    environment:
+      MODEL_PATH: /models/whisper
+      MODEL_NAME: medium  # Use 'medium' for CPU, 'large-v3' for GPU
+      REDIS_URL: redis://redis:6379/5
+      LOG_LEVEL: INFO
+    ports:
+      - "8006:8006"
+    volumes:
+      - ./services/stt-service:/app
+      - ./ml-models/whisper:/models/whisper
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8006 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ocp-network
 
-  # TTS Service (Coqui) - To be implemented
-  # tts-service:
-  #   build:
-  #     context: ./services/tts-service
-  #     dockerfile: Dockerfile
-  #   container_name: ocp-tts-service
-  #   runtime: nvidia  # Requires nvidia-docker for GPU
-  #   environment:
-  #     MODEL_PATH: /models/tts
-  #     REDIS_URL: redis://redis:6379/6
-  #     LOG_LEVEL: INFO
-  #   ports:
-  #     - "8007:8007"
-  #   volumes:
-  #     - ./services/tts-service:/app
-  #     - ./ml-models/tts:/models/tts
-  #   depends_on:
-  #     - redis
-  #   networks:
-  #     - ocp-network
+  # TTS Service (Coqui)
+  tts-service:
+    build:
+      context: ./services/tts-service
+      dockerfile: Dockerfile
+    container_name: ocp-tts-service
+    # runtime: nvidia  # Uncomment for GPU support (requires nvidia-docker)
+    environment:
+      MODEL_PATH: /models/tts
+      REDIS_URL: redis://redis:6379/6
+      LOG_LEVEL: INFO
+    ports:
+      - "8007:8007"
+    volumes:
+      - ./services/tts-service:/app
+      - ./ml-models/tts:/models/tts
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8007 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ocp-network
 
   # ============================================
   # CHAT CONNECTOR (Phase 1)
