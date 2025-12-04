@@ -193,23 +193,30 @@ services:
     networks:
       - ocp-network
 
-  # FreeSWITCH SIP Server (commented out until configured)
-  # Uncomment when ready to test voice calls
-  # freeswitch:
-  #   image: drachtio/freeswitch:latest
-  #   container_name: ocp-freeswitch
-  #   ports:
-  #     - "5060:5060/udp"   # SIP
-  #     - "5080:5080/tcp"   # SIP over TCP
-  #     - "8021:8021/tcp"   # ESL
-  #     - "16384-16394:16384-16394/udp"  # RTP
-  #   volumes:
-  #     - ./infrastructure/freeswitch/freeswitch.xml:/etc/freeswitch/freeswitch.xml
-  #     - ./data/recordings:/recordings
-  #   environment:
-  #     FREESWITCH_LOG_LEVEL: INFO
-  #   networks:
-  #     - ocp-network
+  # FreeSWITCH SIP Server
+  freeswitch:
+    build:
+      context: ./infrastructure/freeswitch
+      dockerfile: Dockerfile
+    container_name: ocp-freeswitch
+    ports:
+      - "5060:5060/udp"   # SIP
+      - "5080:5080/tcp"   # SIP over TCP
+      - "8021:8021/tcp"   # ESL (Event Socket Layer)
+      - "16384-16394:16384-16394/udp"  # RTP (Media)
+    volumes:
+      - ./infrastructure/freeswitch/freeswitch.xml:/etc/freeswitch/freeswitch.xml:ro
+      - ./data/recordings:/recordings
+    environment:
+      FREESWITCH_LOG_LEVEL: INFO
+    networks:
+      - ocp-network
+    healthcheck:
+      test: ["CMD", "fs_cli", "-x", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
   # STT Service (Whisper)
   stt-service:

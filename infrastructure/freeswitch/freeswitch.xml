@@ -1,0 +1,163 @@
+<?xml version="1.0"?>
+<document type="freeswitch/xml">
+  <!--
+    OCP Platform FreeSWITCH Configuration
+    Main configuration file for SIP-based voice calls
+  -->
+
+  <X-PRE-PROCESS cmd="set" data="sound_prefix=/usr/share/freeswitch/sounds/en/us/callie"/>
+  <X-PRE-PROCESS cmd="set" data="domain=ocp-platform.local"/>
+  <X-PRE-PROCESS cmd="set" data="domain_name=ocp-platform.local"/>
+  <X-PRE-PROCESS cmd="set" data="hold_music=local_stream://default"/>
+
+  <!-- Global variables -->
+  <X-PRE-PROCESS cmd="set" data="internal_sip_port=5060"/>
+  <X-PRE-PROCESS cmd="set" data="internal_tls_port=5061"/>
+  <X-PRE-PROCESS cmd="set" data="external_sip_port=5080"/>
+
+  <!-- ESL (Event Socket Layer) -->
+  <X-PRE-PROCESS cmd="set" data="esl_password=ClueCon"/>
+
+  <section name="configuration" description="Various Configuration">
+    <!-- Load configuration files -->
+    <configuration name="console.conf" description="Console Logger">
+      <settings>
+        <param name="colorize" value="true"/>
+        <param name="loglevel" value="info"/>
+      </settings>
+    </configuration>
+
+    <configuration name="modules.conf" description="Modules">
+      <modules>
+        <!-- Core modules -->
+        <load module="mod_console"/>
+        <load module="mod_logfile"/>
+
+        <!-- Dialplan modules -->
+        <load module="mod_dialplan_xml"/>
+
+        <!-- Endpoint modules -->
+        <load module="mod_sofia"/>
+
+        <!-- Application modules -->
+        <load module="mod_commands"/>
+        <load module="mod_dptools"/>
+        <load module="mod_event_socket"/>
+
+        <!-- Codec modules -->
+        <load module="mod_g711"/>
+        <load module="mod_opus"/>
+
+        <!-- Format modules -->
+        <load module="mod_sndfile"/>
+        <load module="mod_native_file"/>
+
+        <!-- Say modules -->
+        <load module="mod_say_en"/>
+      </modules>
+    </configuration>
+
+    <!-- Event Socket Layer Configuration -->
+    <configuration name="event_socket.conf" description="Socket Client">
+      <settings>
+        <param name="nat-map" value="false"/>
+        <param name="listen-ip" value="0.0.0.0"/>
+        <param name="listen-port" value="8021"/>
+        <param name="password" value="$${esl_password}"/>
+      </settings>
+    </configuration>
+
+    <!-- Sofia SIP Configuration -->
+    <configuration name="sofia.conf" description="Sofia Endpoint">
+      <global_settings>
+        <param name="log-level" value="0"/>
+        <param name="debug-presence" value="0"/>
+      </global_settings>
+
+      <profiles>
+        <!-- Internal SIP Profile -->
+        <profile name="internal">
+          <settings>
+            <param name="debug" value="0"/>
+            <param name="sip-trace" value="no"/>
+            <param name="sip-capture" value="no"/>
+            <param name="rfc2833-pt" value="101"/>
+            <param name="sip-port" value="$${internal_sip_port}"/>
+            <param name="dialplan" value="XML"/>
+            <param name="context" value="default"/>
+            <param name="dtmf-duration" value="2000"/>
+            <param name="inbound-codec-prefs" value="OPUS,PCMU,PCMA"/>
+            <param name="outbound-codec-prefs" value="OPUS,PCMU,PCMA"/>
+            <param name="rtp-timer-name" value="soft"/>
+            <param name="local-network-acl" value="localnet.auto"/>
+            <param name="manage-presence" value="false"/>
+            <param name="inbound-codec-negotiation" value="generous"/>
+            <param name="tls" value="false"/>
+            <param name="nonce-ttl" value="60"/>
+            <param name="auth-calls" value="false"/>
+            <param name="rtp-ip" value="0.0.0.0"/>
+            <param name="sip-ip" value="0.0.0.0"/>
+            <param name="hold-music" value="$${hold_music}"/>
+            <param name="record-path" value="/recordings"/>
+            <param name="record-template" value="${uuid}.wav"/>
+          </settings>
+        </profile>
+
+        <!-- External SIP Profile -->
+        <profile name="external">
+          <settings>
+            <param name="debug" value="0"/>
+            <param name="sip-trace" value="no"/>
+            <param name="sip-port" value="$${external_sip_port}"/>
+            <param name="dialplan" value="XML"/>
+            <param name="context" value="public"/>
+            <param name="dtmf-duration" value="2000"/>
+            <param name="inbound-codec-prefs" value="OPUS,PCMU,PCMA"/>
+            <param name="outbound-codec-prefs" value="OPUS,PCMU,PCMA"/>
+            <param name="rtp-timer-name" value="soft"/>
+            <param name="manage-presence" value="false"/>
+            <param name="auth-calls" value="false"/>
+            <param name="rtp-ip" value="0.0.0.0"/>
+            <param name="sip-ip" value="0.0.0.0"/>
+            <param name="record-path" value="/recordings"/>
+          </settings>
+        </profile>
+      </profiles>
+    </configuration>
+
+    <!-- Switch Configuration -->
+    <configuration name="switch.conf" description="Core Configuration">
+      <settings>
+        <param name="colorize-console" value="true"/>
+        <param name="max-sessions" value="1000"/>
+        <param name="sessions-per-second" value="30"/>
+        <param name="loglevel" value="info"/>
+      </settings>
+    </configuration>
+  </section>
+
+  <!-- Dialplan -->
+  <section name="dialplan" description="Dialplan">
+    <context name="default">
+      <!-- Route all calls to Voice Connector via ESL -->
+      <extension name="voice_connector_route">
+        <condition field="destination_number" expression="^(.*)$">
+          <action application="answer"/>
+          <action application="log" data="INFO Routing call to Voice Connector"/>
+          <action application="park"/>
+        </condition>
+      </extension>
+    </context>
+
+    <!-- Public context for incoming calls -->
+    <context name="public">
+      <extension name="public_inbound">
+        <condition field="destination_number" expression="^(.*)$">
+          <action application="log" data="INFO Incoming call from ${caller_id_number} to ${destination_number}"/>
+          <action application="answer"/>
+          <action application="park"/>
+        </condition>
+      </extension>
+    </context>
+  </section>
+</document>
